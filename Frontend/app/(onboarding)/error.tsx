@@ -1,20 +1,33 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+// 기기 크기 가져오기
+const { width: screenWidth } = Dimensions.get('window');
+
+// 배열/문자열 구분 처리
+const first = (v?: string | string[]) => Array.isArray(v) ? v[0] : (v ?? '');
+
+// reason 값을 정규화: 소문자, 언더바·공백 → 하이픈
+const norm = (v: string) =>
+  v.trim().toLowerCase().replace(/[\s_]+/g, '-');
 
 export default function ErrorScreen() {
   const router = useRouter();
 
-  // result.tsx에서 에러로 보낼 때 예시:
-  // router.replace('/(onboarding)/error?reason=invalid-size&width=10&height=12&length=5&categories=["한식"]')
-  // router.replace('/(onboarding)/error?reason=no-category&width=10&height=12&length=5')
-  const { reason, width, height, length, categories } = useLocalSearchParams<{
-    reason?: string;
-    width?: string;
-    height?: string;
-    length?: string;
-    categories?: string; // JSON 문자열 또는 단일 문자열일 수 있음
+  const params = useLocalSearchParams<{
+    reason?: string | string[];
+    width?: string | string[];
+    height?: string | string[];
+    length?: string | string[];
+    categories?: string | string[];
   }>();
+
+  const reason = norm(first(params.reason));
+  const width = first(params.width);
+  const height = first(params.height);
+  const length = first(params.length);
+  const categories = first(params.categories);
 
   const getMessage = () => {
     switch (reason) {
@@ -28,22 +41,7 @@ export default function ErrorScreen() {
   };
 
   const handleOK = () => {
-    // 이전 입력값을 가능한 한 보존해서 입력 화면에 넘겨줌(프리필용)
-    const commonParams = {
-      width: width ?? '',
-      height: height ?? '',
-      length: length ?? '',
-      categories: categories ?? '',
-    };
-
-    if (reason === 'invalid-size') {
-      router.replace({ pathname: '/home', params: commonParams });
-      return;
-    }
-    if (reason === 'no-category') {
-      router.replace({ pathname: '/home', params: commonParams });
-      return;
-    }
+    const commonParams = { width, height, length, categories };
     router.replace({ pathname: '/home', params: commonParams });
   };
 
@@ -72,8 +70,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   image: {
-    width: 350,
-    height: 350,
+    width: screenWidth * 0.5, // 화면 폭의 50%
+    height: screenWidth * 0.5,
     marginBottom: 20,
   },
   title: {
@@ -101,3 +99,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+

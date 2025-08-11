@@ -1,6 +1,6 @@
 import MenuCard from '@/components/MenuCard';
 import * as Location from 'expo-location';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import {
@@ -23,7 +23,6 @@ type MenuItem = {
   lng: number;
 };
 
-// 안전 변환 유틸
 const toNum = (v: unknown) =>
   Number(String(v ?? '').replace(/[^0-9.]/g, '')) || 0;
 
@@ -34,24 +33,25 @@ const toCatArray = (v: unknown) => {
       const arr = JSON.parse(v);
       if (Array.isArray(arr)) return arr.map(String);
     } catch {}
-    return v ? [v] : []; // 단일 문자열이면 배열로, 빈 문자열이면 빈 배열
+    return v ? [v] : []; 
   }
   return [];
 };
 
 export default function ResultScreen() {
+  const router = useRouter(); 
   const [menuList, setMenuList] = useState<MenuItem[]>([]);
   const [userLocation, setUserLocation] = useState<Location.LocationObjectCoords | null>(null);
   const [sortOption, setSortOption] = useState<'ai' | 'distance' | 'low' | 'high'>('ai');
   const [loading, setLoading] = useState(true);
 
-  // 라우트 파라미터 파싱 (category 단수도 지원)
+
   const params = useLocalSearchParams<{
     width?: string;
     height?: string;
     length?: string;
-    categories?: string; // ["한식"] 같은 JSON 문자열
-    category?: string;   // "chinese" 같은 단일 문자열로 올 수도 있음
+    categories?: string; 
+    category?: string;  
   }>();
 
   const containerWidth  = toNum(params.width);
@@ -61,7 +61,26 @@ export default function ResultScreen() {
   const rawCats = params.categories ?? params.category ?? '';
   const categories = toCatArray(rawCats);
 
-  // 사용자 위치 가져오기
+  const categoryMap: Record<string, string> = {
+    korean: '한식',
+    chinese: '중식',
+    japanese: '일식',
+    western: '양식',
+    etc: '기타',
+    한식: '한식',
+    중식: '중식',
+    일식: '일식',
+    양식: '양식',
+    기타: '기타',
+  };
+
+  const categoriesForApi = categories
+    .map((c) => {
+      const key = String(c);
+      return categoryMap[key.toLowerCase()] ?? categoryMap[key] ?? '';
+    })
+    .filter(Boolean);
+
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -74,21 +93,21 @@ export default function ResultScreen() {
     })();
   }, []);
 
-  // AI 추천 메뉴 받아오기 (파라미터가 바뀌면 재요청)
   useEffect(() => {
     setLoading(true);
 
     console.log('파라미터 원본:', params);
     console.log('파싱된 값:', {
-      containerWidth, containerHeight, containerLength, categories
+      containerWidth, containerHeight, containerLength, categories, categoriesForApi
     });
 
-    // 전송 전 가드
-    if (containerWidth <= 0 || containerHeight <= 0 || containerLength <= 0 || categories.length === 0) {
+
+    if (containerWidth <= 0 || containerHeight <= 0 || containerLength <= 0 || categoriesForApi.length === 0) {
       console.log('전송 스킵: 값 미완성', {
-        containerWidth, containerHeight, containerLength, categories
+        containerWidth, containerHeight, containerLength, categoriesForApi
       });
       setLoading(false);
+      router.replace('/noresult'); 
       return;
     }
 
@@ -98,10 +117,10 @@ export default function ResultScreen() {
         height: containerHeight,
         length: containerLength,
       },
-      categories,
-      sort: "default",        
-      page: 1,               
-      limit: 10,             
+      categories: categoriesForApi,
+      sort: "default",
+      page: 1,
+      limit: 10,
       use_ai: true
     };
 
@@ -123,15 +142,29 @@ export default function ResultScreen() {
       .then((data: any) => {
         console.log('받은 응답:', data);
 
-        const converted: MenuItem[] = (data?.recommendations ?? []).map((item: any) => ({
-          name: item.food_name,
+        const list = Array.isArray(data?.recommendations)
+          ? data.recommendations
+          : Array.isArray(data?.results)
+          ? data.results
+          : [];
+
+        const total = typeof data?.total === 'number' ? data.total : list.length;
+
+        if (!list || list.length === 0 || total === 0) {
+          setLoading(false);
+          router.replace('/noresult'); 
+          return;
+        }
+
+        const converted: MenuItem[] = list.map((item: any) => ({
+          name: item.name ?? item.food_name ?? '메뉴명 없음',
           category: item.category || '기타',
-          price: item.price,
-          restaurantName: item.restaurant_name,
-          imageUrl: item.image_url,
-          placeId: item.place_id?.toString() || '0',
-          lat: item.lat,
-          lng: item.lng,
+          price: Number(item.price ?? 0),
+          restaurantName: item.restaurantName ?? item.restaurant_name ?? '식당명 없음',
+          imageUrl: String(item.image_url ?? item.img_url ?? item.imageUrl ?? ''), 
+          placeId: String(item.place_id ?? item.placeId ?? ''),
+          lat: Number(item.lat ?? 0),
+          lng: Number(item.lng ?? 0),
         }));
 
         setMenuList(converted);
@@ -140,12 +173,13 @@ export default function ResultScreen() {
       .catch((err) => {
         console.error('API 호출 에러:', err.message);
         setLoading(false);
+        router.replace('/noresult');
       });
   }, [
     containerWidth,
     containerHeight,
     containerLength,
-    JSON.stringify(categories),
+    JSON.stringify(categoriesForApi),
   ]);
 
   const getSortedList = () => {
@@ -264,3 +298,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
+
+
